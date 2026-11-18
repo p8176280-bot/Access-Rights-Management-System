@@ -1,0 +1,38 @@
+# รันทั้งระบบด้วย Docker:  docker compose up -d --build   แล้วเปิด http://localhost:8080
+# ต้องมีไฟล์ .env (คัดลอกจาก .env.example)
+services:
+  db:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: access_rights
+      POSTGRES_USER: access_app
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?ต้องตั้งค่า DB_PASSWORD ในไฟล์ .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # สร้างตารางอัตโนมัติตอนสร้าง Database ครั้งแรก
+      - ./database/schema-postgresql.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U access_app -d access_rights"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: src/AccessRights.Web/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      Database__Provider: PostgreSQL
+      ConnectionStrings__Default: "Host=db;Port=5432;Database=access_rights;Username=access_app;Password=${DB_PASSWORD}"
+      Seed__AdminPassword: ${ADMIN_PASSWORD:?ต้องตั้งค่า ADMIN_PASSWORD ในไฟล์ .env}
+      Email__Host: ${SMTP_HOST:-}
+      Email__Enabled: ${SMTP_ENABLED:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  pgdata:

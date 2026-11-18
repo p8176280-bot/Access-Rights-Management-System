@@ -1,0 +1,8 @@
+**/bin/
+**/obj/
+**/mail-outbox/
+.git/
+.vs/
+.vscode/
+.env
+tests/

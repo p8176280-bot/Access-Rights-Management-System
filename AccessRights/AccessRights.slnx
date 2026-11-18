@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/AccessRights.Domain/AccessRights.Domain.csproj" />
+    <Project Path="src/AccessRights.Infrastructure/AccessRights.Infrastructure.csproj" />
+    <Project Path="src/AccessRights.Web/AccessRights.Web.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/AccessRights.Tests/AccessRights.Tests.csproj" />
+  </Folder>
+</Solution>

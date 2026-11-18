@@ -1,0 +1,134 @@
+@page "/admin/rights"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@inherits AppPage
+@inject RightService RightSvc
+
+<PageTitle>จัดการรายการสิทธิ | @AppInfo.ShortName</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 m-0">จัดการรายการสิทธิ</h1>
+    @if (form is null)
+    {
+        <button class="btn btn-primary" @onclick="New">+ เพิ่มสิทธิ</button>
+    }
+</div>
+
+<Alerts Error="@Error" Success="@Success" />
+
+@if (form is not null)
+{
+    <div class="card mb-4 border-primary">
+        <div class="card-body">
+            <h2 class="h6 mb-3">@(form.Id is null ? "เพิ่มสิทธิใหม่" : $"แก้ไขสิทธิ: {form.Name}")</h2>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label class="form-label">ชื่อสิทธิ</label>
+                    <input class="form-control" @bind="form.Name" maxlength="150" />
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">ผู้อนุมัติประจำสิทธิ</label>
+                    <select class="form-select" @bind="form.ApproverId">
+                        <option value="">-- เลือก --</option>
+                        @foreach (var a in approvers)
+                        {
+                            <option value="@a.Id">@a.FullName (@a.Username)</option>
+                        }
+                    </select>
+                    <div class="form-text">เลือกได้เฉพาะผู้ใช้ที่มีบทบาท Approver หรือ Admin</div>
+                </div>
+                <div class="col-12">
+                    <label class="form-label">คำอธิบาย</label>
+                    <textarea class="form-control" rows="2" maxlength="1000" @bind="form.Description"></textarea>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ขอได้นานสุด (วัน)</label>
+                    <input type="number" min="1" max="3650" class="form-control" @bind="form.MaxDurationDays" placeholder="เว้นว่าง = ไม่จำกัด" />
+                    <div class="form-text">ถ้ากำหนด ผู้ยื่นต้องระบุวันสิ้นสุดไม่เกินจำนวนวันนี้</div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label d-block">สถานะ</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="right-active" @bind="form.IsActive" />
+                        <label class="form-check-label" for="right-active">@(form.IsActive ? "เปิดให้ขอ" : "ปิดใช้งาน")</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@Busy">บันทึก</button>
+                <button class="btn btn-light" @onclick="() => form = null">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (Loaded && rights.Count > 0)
+{
+    <div class="card">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr><th>ชื่อสิทธิ</th><th>ผู้อนุมัติ</th><th>ขอได้นานสุด</th><th>สถานะ</th><th>คำอธิบาย</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var r in rights)
+                {
+                    <tr class="@(r.IsActive ? "" : "text-muted")">
+                        <td>@r.Name</td>
+                        <td>@r.Approver.FullName</td>
+                        <td>@Fmt.MaxDays(r.MaxDurationDays)</td>
+                        <td>@(r.IsActive ? "เปิดให้ขอ" : "ปิดใช้งาน")</td>
+                        <td class="small">@r.Description</td>
+                        <td class="text-end"><button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(r)">แก้ไข</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+else if (Loaded && Error is null && form is null)
+{
+    <p class="text-muted">ยังไม่มีรายการสิทธิ กด "เพิ่มสิทธิ" เพื่อเริ่มต้น</p>
+}
+
+@code {
+    private List<Right> rights = [];
+    private List<User> approvers = [];
+    private RightInput? form;
+
+    protected override async Task LoadAsync()
+    {
+        rights = await RightSvc.ListAllAsync(Actor!);
+        approvers = await RightSvc.ListApproverCandidatesAsync(Actor!);
+    }
+
+    private void New()
+    {
+        Error = Success = null;
+        form = new RightInput();
+    }
+
+    private void Edit(Right r)
+    {
+        Error = Success = null;
+        form = new RightInput
+        {
+            Id = r.Id,
+            Name = r.Name,
+            Description = r.Description,
+            ApproverId = r.ApproverId,
+            MaxDurationDays = r.MaxDurationDays,
+            IsActive = r.IsActive
+        };
+    }
+
+    private async Task SaveAsync()
+    {
+        var isNew = form!.Id is null;
+        var ok = await RunAsync(async () =>
+        {
+            await RightSvc.SaveAsync(Actor!, form!);
+            await LoadAsync();
+        }, isNew ? "เพิ่มสิทธิเรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย");
+        if (ok) form = null;
+    }
+}

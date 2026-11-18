@@ -1,0 +1,138 @@
+@inherits LayoutComponentBase
+@implements IDisposable
+@inject CurrentUser CurrentUser
+@inject InboxService Inbox
+@inject NavigationManager Nav
+
+@if (InAdmin)
+{
+    @* ---------- แถบเมนูโหมดผู้ดูแลระบบ (แยกจากผู้ใช้ทั่วไป) ---------- *@
+    <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
+        <div class="container flex-wrap gap-2">
+            <a class="navbar-brand fw-semibold lh-sm" href="admin">
+                <span class="d-block small opacity-75">@AppInfo.CompanyName · ผู้ดูแลระบบ</span>
+                @AppInfo.SystemName
+            </a>
+            <AuthorizeView Roles="Admin">
+                <Authorized>
+                    <ul class="navbar-nav me-auto flex-row flex-wrap gap-2">
+                        <li class="nav-item"><NavLink class="nav-link" href="admin/requests">คำขอทั้งหมด</NavLink></li>
+                        <li class="nav-item"><NavLink class="nav-link" href="admin/users">จัดการผู้ใช้</NavLink></li>
+                        <li class="nav-item"><NavLink class="nav-link" href="admin/rights">จัดการรายการสิทธิ</NavLink></li>
+                    </ul>
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        @if (context.User.IsInRole("Requester") || context.User.IsInRole("Approver"))
+                        {
+                            <a class="btn btn-sm btn-outline-light" href="">ไปหน้าผู้ใช้งาน</a>
+                        }
+                        <span class="text-white-50 small text-nowrap">
+                            @context.User.FindFirst(CurrentUser.FullNameClaim)?.Value
+                            <span class="badge text-bg-warning ms-1">Admin</span>
+                        </span>
+                        <form method="post" action="logout" class="m-0">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-sm btn-outline-light text-nowrap">ออกจากระบบ</button>
+                        </form>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </nav>
+}
+else
+{
+    <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
+        <div class="container flex-wrap gap-2">
+            <a class="navbar-brand fw-semibold lh-sm" href="">
+                <span class="d-block small opacity-75">@AppInfo.CompanyName</span>
+                @AppInfo.SystemName
+            </a>
+
+            <AuthorizeView>
+                <Authorized>
+                    @* เมนูงานของผู้ใช้ทั่วไป *@
+                    <ul class="navbar-nav me-auto flex-row flex-wrap gap-2">
+                        <li class="nav-item"><NavLink class="nav-link" href="" Match="NavLinkMatch.All">หน้าแรก</NavLink></li>
+                        <li class="nav-item"><NavLink class="nav-link" href="rights">รายการสิทธิ</NavLink></li>
+                        @if (context.User.IsInRole("Requester"))
+                        {
+                            <li class="nav-item"><NavLink class="nav-link" href="requests" Match="NavLinkMatch.All">คำขอของฉัน</NavLink></li>
+                            <li class="nav-item"><NavLink class="nav-link" href="requests/new">ยื่นคำขอ</NavLink></li>
+                        }
+                        @if (context.User.IsInRole("Approver") || context.User.IsInRole("Admin"))
+                        {
+                            <li class="nav-item"><NavLink class="nav-link" href="reviews">รอพิจารณา</NavLink></li>
+                        }
+                    </ul>
+
+                    <div class="d-flex flex-wrap align-items-center gap-2">
+                        @* ทางเข้าส่วนผู้ดูแลระบบ: แสดงเฉพาะ Admin และแยกสีให้เห็นชัด *@
+                        @if (context.User.IsInRole("Admin"))
+                        {
+                            <NavLink class="btn btn-sm btn-warning fw-semibold admin-entry" href="admin" Match="NavLinkMatch.Prefix">ผู้ดูแลระบบ</NavLink>
+                        }
+
+                        <NavLink class="nav-link text-white text-nowrap" href="notifications">
+                            แจ้งเตือน
+                            @if (unread > 0)
+                            {
+                                <span class="badge rounded-pill text-bg-danger">@unread</span>
+                            }
+                        </NavLink>
+
+                        <NavLink class="nav-link text-white text-nowrap user-chip" href="profile" title="ข้อมูลของฉัน">
+                            @context.User.FindFirst(CurrentUser.FullNameClaim)?.Value
+                            @if (context.User.IsInRole("Admin")) { <span class="badge text-bg-warning ms-1">Admin</span> }
+                            @if (context.User.IsInRole("Approver")) { <span class="badge text-bg-info ms-1">Approver</span> }
+                            @if (context.User.IsInRole("Requester")) { <span class="badge text-bg-light ms-1">Requester</span> }
+                        </NavLink>
+
+                        <form method="post" action="logout" class="m-0">
+                            <AntiforgeryToken />
+                            <button type="submit" class="btn btn-sm btn-outline-light text-nowrap">ออกจากระบบ</button>
+                        </form>
+                    </div>
+                </Authorized>
+            </AuthorizeView>
+        </div>
+    </nav>
+}
+
+<main class="container pb-5">
+    @Body
+</main>
+
+@code {
+    private int unread;
+
+    /// <summary>กำลังอยู่ในส่วนผู้ดูแลระบบ (/admin...) หรือไม่</summary>
+    private bool InAdmin => Nav.ToBaseRelativePath(Nav.Uri).StartsWith("admin", StringComparison.OrdinalIgnoreCase);
+
+    protected override async Task OnInitializedAsync()
+    {
+        Nav.LocationChanged += OnLocationChanged;
+        await RefreshUnreadAsync();
+    }
+
+    private async Task RefreshUnreadAsync()
+    {
+        try
+        {
+            unread = await Inbox.CountUnreadAsync(await CurrentUser.GetAsync());
+        }
+        catch (AppException)
+        {
+            unread = 0; // ยังไม่ได้ Login
+        }
+    }
+
+    // อัปเดตจำนวนแจ้งเตือนทุกครั้งที่เปลี่ยนหน้า
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e) =>
+        _ = InvokeAsync(async () =>
+        {
+            await RefreshUnreadAsync();
+            StateHasChanged();
+        });
+
+    public void Dispose() => Nav.LocationChanged -= OnLocationChanged;
+}

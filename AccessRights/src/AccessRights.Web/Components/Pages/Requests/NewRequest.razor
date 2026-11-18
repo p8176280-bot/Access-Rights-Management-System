@@ -1,0 +1,99 @@
+@page "/requests/new"
+@attribute [Authorize(Roles = "Requester")]
+@inherits AppPage
+@inject RequestService Requests
+@inject RightService Rights
+@inject NavigationManager Nav
+
+<PageTitle>ยื่นคำขอสิทธิ | @AppInfo.ShortName</PageTitle>
+
+<h1 class="h4 mb-3">ยื่นคำขอสิทธิ</h1>
+
+<Alerts Error="@Error" />
+
+@if (Loaded && rights.Count == 0 && Error is null)
+{
+    <p class="text-muted">ยังไม่มีรายการสิทธิที่เปิดให้ขอ</p>
+}
+else if (Loaded)
+{
+    <div class="card" style="max-width: 720px">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="right">สิทธิที่ต้องการ</label>
+                <select id="right" class="form-select" @bind="rightId" @bind:after="OnRightChanged">
+                    <option value="">-- เลือกสิทธิ --</option>
+                    @foreach (var r in rights)
+                    {
+                        <option value="@r.Id">@r.Name</option>
+                    }
+                </select>
+                @if (Selected is { } s)
+                {
+                    <div class="form-text">
+                        @(s.Description ?? "")
+                        <br />ผู้อนุมัติ: <strong>@s.Approver.FullName</strong>
+                        · ขอได้นานสุด: <strong>@Fmt.MaxDays(s.MaxDurationDays)</strong>
+                    </div>
+                }
+            </div>
+
+            <div class="mb-3">
+                <label class="form-label fw-semibold" for="end">
+                    ใช้สิทธิได้ถึงวันที่ @(Selected?.MaxDurationDays is null ? "(เว้นว่าง = ไม่มีวันหมดอายุ)" : "(จำเป็น)")
+                </label>
+                <input id="end" type="date" class="form-control" style="max-width: 220px"
+                       min="@Fmt.InputDate(Today)" max="@MaxDate"
+                       @bind="endDate" @bind:format="yyyy-MM-dd" />
+            </div>
+
+            <div class="mb-4">
+                <label class="form-label fw-semibold" for="reason">เหตุผลในการขอสิทธิ</label>
+                <textarea id="reason" class="form-control" rows="4" maxlength="1000" @bind="reason"
+                          placeholder="เช่น ได้รับมอบหมายให้ดูแลงานปิดบัญชีประจำเดือน"></textarea>
+            </div>
+
+            <button class="btn btn-primary" disabled="@(Busy || rightId is null)" @onclick="SubmitAsync">
+                @(Busy ? "กำลังส่ง..." : "ส่งคำขอ")
+            </button>
+            <a class="btn btn-link" href="requests">ยกเลิก</a>
+        </div>
+    </div>
+}
+
+@code {
+    [SupplyParameterFromQuery(Name = "rightId")] public int? PreselectRightId { get; set; }
+
+    private List<Right> rights = [];
+    private int? rightId;
+    private DateOnly? endDate;
+    private string reason = "";
+
+    private Right? Selected => rights.FirstOrDefault(r => r.Id == rightId);
+
+    private string? MaxDate => Selected?.MaxDurationDays is { } d ? Fmt.InputDate(Today.AddDays(d)) : null;
+
+    protected override async Task LoadAsync()
+    {
+        rights = await Rights.ListActiveAsync();
+        if (PreselectRightId is { } id && rights.Any(r => r.Id == id))
+        {
+            rightId = id;
+            OnRightChanged();
+        }
+    }
+
+    private void OnRightChanged()
+    {
+        // ตั้งค่าเริ่มต้นวันสิ้นสุดเป็นค่าสูงสุดที่สิทธินั้นอนุญาต
+        endDate = Selected?.MaxDurationDays is { } d ? Today.AddDays(d) : null;
+    }
+
+    private async Task SubmitAsync()
+    {
+        var id = 0;
+        var ok = await RunAsync(async () => id = await Requests.SubmitAsync(Actor!, rightId!.Value, reason, endDate));
+        if (ok)
+            Nav.NavigateTo($"requests/{id}?submitted=1");
+    }
+}

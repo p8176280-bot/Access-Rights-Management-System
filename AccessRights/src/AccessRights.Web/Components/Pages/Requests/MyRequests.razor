@@ -1,0 +1,65 @@
+@page "/requests"
+@inherits AppPage
+@inject RequestService Requests
+
+<PageTitle>คำขอของฉัน | @AppInfo.ShortName</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 m-0">คำขอของฉัน</h1>
+    <a class="btn btn-primary" href="requests/new">+ ยื่นคำขอใหม่</a>
+</div>
+
+<Alerts Error="@Error" />
+
+@if (Loaded && Error is null)
+{
+    <div class="mb-3" style="max-width: 260px">
+        <select class="form-select" @bind="filter">
+            <option value="">ทุกสถานะ (@requests.Count)</option>
+            <option value="รอพิจารณา">รอพิจารณา</option>
+            <option value="อนุมัติ">อนุมัติ (ใช้งานอยู่)</option>
+            <option value="หมดอายุ">หมดอายุ</option>
+            <option value="ปฏิเสธ">ปฏิเสธ</option>
+            <option value="ยกเลิก">ยกเลิก</option>
+        </select>
+    </div>
+
+    @if (Filtered.Count == 0)
+    {
+        <p class="text-muted">ไม่มีคำขอ</p>
+    }
+    else
+    {
+        <div class="card">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr><th>เลขที่</th><th>สิทธิ</th><th>ผู้อนุมัติ</th><th>ใช้ได้ถึง</th><th>สถานะ</th><th>ยื่นเมื่อ</th></tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in Filtered)
+                    {
+                        <tr>
+                            <td><a href="requests/@r.Id">@r.RequestNo</a></td>
+                            <td>@r.Right.Name</td>
+                            <td>@r.Approver.FullName</td>
+                            <td>@Fmt.Day(r.EndDate)</td>
+                            <td><StatusBadge Request="r" /></td>
+                            <td>@Fmt.Time(r.CreatedAt)</td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<AccessRequest> requests = [];
+    private string filter = "";
+
+    private List<AccessRequest> Filtered => string.IsNullOrEmpty(filter)
+        ? requests
+        : requests.Where(r => Fmt.Status(r, Today) == filter).ToList();
+
+    protected override async Task LoadAsync() => requests = await Requests.ListMineAsync(Actor!);
+}

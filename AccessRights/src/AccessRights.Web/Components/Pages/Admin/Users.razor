@@ -1,0 +1,143 @@
+@page "/admin/users"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@inherits AppPage
+@inject UserService UserSvc
+
+<PageTitle>จัดการผู้ใช้ | @AppInfo.ShortName</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 m-0">จัดการผู้ใช้</h1>
+    @if (form is null)
+    {
+        <button class="btn btn-primary" @onclick="New">+ เพิ่มผู้ใช้</button>
+    }
+</div>
+
+<Alerts Error="@Error" Success="@Success" />
+
+@if (form is not null)
+{
+    <div class="card mb-4 border-primary">
+        <div class="card-body">
+            <h2 class="h6 mb-3">@(form.Id is null ? "เพิ่มผู้ใช้ใหม่" : $"แก้ไขผู้ใช้: {form.Username}")</h2>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label class="form-label">ชื่อผู้ใช้ (ใช้ Login)</label>
+                    <input class="form-control" @bind="form.Username" maxlength="50" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">ชื่อ-นามสกุล</label>
+                    <input class="form-control" @bind="form.FullName" maxlength="150" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">อีเมล (ใช้รับแจ้งเตือน)</label>
+                    <input type="email" class="form-control" @bind="form.Email" maxlength="150" />
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">
+                        รหัสผ่าน @(form.Id is null ? "" : "(เว้นว่างถ้าไม่เปลี่ยน)")
+                    </label>
+                    <input type="password" class="form-control" @bind="form.Password" autocomplete="new-password" />
+                    <div class="form-text">อย่างน้อย @UserService.MinPasswordLength ตัวอักษร มีทั้งตัวอักษรและตัวเลข</div>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label d-block">บทบาท (เลือกได้หลายบทบาท)</label>
+                    @foreach (var role in Enum.GetValues<Role>())
+                    {
+                        <div class="form-check form-check-inline">
+                            <input class="form-check-input" type="checkbox" id="role-@role"
+                                   checked="@form.Roles.Contains(role)"
+                                   @onchange="e => ToggleRole(role, e.Value is true)" />
+                            <label class="form-check-label" for="role-@role">@Fmt.RoleName(role)</label>
+                        </div>
+                    }
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label d-block">สถานะบัญชี</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="active" @bind="form.IsActive" />
+                        <label class="form-check-label" for="active">@(form.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</label>
+                    </div>
+                </div>
+            </div>
+            <div class="mt-3">
+                <button class="btn btn-primary" @onclick="SaveAsync" disabled="@Busy">บันทึก</button>
+                <button class="btn btn-light" @onclick="() => form = null">ยกเลิก</button>
+            </div>
+        </div>
+    </div>
+}
+
+@if (Loaded && users.Count > 0)
+{
+    <div class="card">
+        <table class="table table-hover mb-0 align-middle">
+            <thead>
+                <tr><th>ชื่อผู้ใช้</th><th>ชื่อ-นามสกุล</th><th>อีเมล</th><th>บทบาท</th><th>สถานะ</th><th></th></tr>
+            </thead>
+            <tbody>
+                @foreach (var u in users)
+                {
+                    <tr class="@(u.IsActive ? "" : "text-muted")">
+                        <td>@u.Username</td>
+                        <td>@u.FullName</td>
+                        <td>@u.Email</td>
+                        <td>
+                            @foreach (var r in u.Roles.OrderBy(r => r.Role))
+                            {
+                                <span class="badge text-bg-light border me-1">@Fmt.RoleName(r.Role)</span>
+                            }
+                        </td>
+                        <td>@(u.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</td>
+                        <td class="text-end"><button class="btn btn-sm btn-outline-primary" @onclick="() => Edit(u)">แก้ไข</button></td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+}
+
+@code {
+    private List<User> users = [];
+    private UserInput? form;
+
+    protected override async Task LoadAsync() => users = await UserSvc.ListAsync(Actor!);
+
+    private void New()
+    {
+        Error = Success = null;
+        form = new UserInput { Roles = [Role.Requester] };
+    }
+
+    private void Edit(User u)
+    {
+        Error = Success = null;
+        form = new UserInput
+        {
+            Id = u.Id,
+            Username = u.Username,
+            FullName = u.FullName,
+            Email = u.Email,
+            IsActive = u.IsActive,
+            Roles = u.Roles.Select(r => r.Role).ToHashSet()
+        };
+    }
+
+    private void ToggleRole(Role role, bool on)
+    {
+        if (on) form!.Roles.Add(role);
+        else form!.Roles.Remove(role);
+    }
+
+    private async Task SaveAsync()
+    {
+        var isNew = form!.Id is null;
+        var ok = await RunAsync(async () =>
+        {
+            await UserSvc.SaveAsync(Actor!, form!);
+            await LoadAsync();
+        }, isNew ? "เพิ่มผู้ใช้เรียบร้อย" : "บันทึกการแก้ไขเรียบร้อย");
+        if (ok) form = null;
+    }
+}

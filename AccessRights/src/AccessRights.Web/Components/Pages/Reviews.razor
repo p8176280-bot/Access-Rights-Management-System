@@ -1,0 +1,58 @@
+@page "/reviews"
+@attribute [Authorize(Roles = "Approver,Admin")]
+@inherits AppPage
+@inject RequestService Requests
+
+<PageTitle>รอพิจารณา | @AppInfo.ShortName</PageTitle>
+
+<h1 class="h4 mb-1">คำขอที่รอพิจารณา</h1>
+<p class="text-muted small mb-3">
+    @(Actor?.IsAdmin == true
+        ? "Admin เห็นคำขอที่รอพิจารณาทั้งหมด ยกเว้นคำขอของตนเอง"
+        : "คำขอของสิทธิที่คุณเป็นผู้อนุมัติ")
+</p>
+
+<Alerts Error="@Error" />
+
+@if (Loaded && Error is null)
+{
+    @if (pending.Count == 0)
+    {
+        <p class="text-muted">ไม่มีคำขอที่รอพิจารณา</p>
+    }
+    else
+    {
+        <div class="card">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th>เลขที่</th><th>ผู้ยื่น</th><th>สิทธิ</th><th>ใช้ได้ถึง</th><th>เหตุผล</th>
+                        @if (Actor!.IsAdmin) { <th>ผู้อนุมัติประจำสิทธิ</th> }
+                        <th>ยื่นเมื่อ</th><th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var r in pending)
+                    {
+                        <tr>
+                            <td>@r.RequestNo</td>
+                            <td>@r.Requester.FullName</td>
+                            <td>@r.Right.Name</td>
+                            <td>@(r.EndDate is null ? "ไม่กำหนด" : Fmt.Day(r.EndDate))</td>
+                            <td class="text-truncate" style="max-width: 240px" title="@r.Reason">@r.Reason</td>
+                            @if (Actor.IsAdmin) { <td>@r.Approver.FullName</td> }
+                            <td>@Fmt.Time(r.CreatedAt)</td>
+                            <td class="text-end"><a class="btn btn-sm btn-primary" href="requests/@r.Id">พิจารณา</a></td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+}
+
+@code {
+    private List<AccessRequest> pending = [];
+
+    protected override async Task LoadAsync() => pending = await Requests.ListPendingReviewsAsync(Actor!);
+}

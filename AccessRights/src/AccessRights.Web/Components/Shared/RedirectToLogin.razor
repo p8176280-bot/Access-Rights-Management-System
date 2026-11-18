@@ -1,0 +1,11 @@
+@inject NavigationManager Nav
+
+@code {
+    protected override void OnInitialized()
+    {
+        var returnUrl = "/" + Nav.ToBaseRelativePath(Nav.Uri);
+        // หน้าในส่วนผู้ดูแลระบบ → ไปหน้า Login ของผู้ดูแล
+        var loginPage = returnUrl.StartsWith("/admin", StringComparison.OrdinalIgnoreCase) ? "admin/login" : "login";
+        Nav.NavigateTo($"{loginPage}?returnUrl={Uri.EscapeDataString(returnUrl)}", forceLoad: true);
+    }
+}

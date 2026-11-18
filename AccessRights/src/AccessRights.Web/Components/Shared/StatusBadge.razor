@@ -1,0 +1,15 @@
+<span class="badge @Css">@Fmt.Status(Request, Clock.Today)</span>
+
+@code {
+    [Parameter, EditorRequired] public AccessRequest Request { get; set; } = default!;
+
+    private string Css => Request.IsExpiredOn(Clock.Today)
+        ? "text-bg-secondary"
+        : Request.Status switch
+        {
+            RequestStatus.Pending => "text-bg-warning",
+            RequestStatus.Approved => "text-bg-success",
+            RequestStatus.Rejected => "text-bg-danger",
+            _ => "text-bg-light border"
+        };
+}

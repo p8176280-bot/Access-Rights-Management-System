@@ -1,0 +1,80 @@
+@page "/admin/login"
+@attribute [AllowAnonymous]
+@attribute [ExcludeFromInteractiveRouting]
+@layout LoginLayout
+@inject AuthService Auth
+@inject NavigationManager Nav
+
+<PageTitle>เข้าสู่ระบบผู้ดูแลระบบ | @AppInfo.ShortName</PageTitle>
+
+<div class="card login-card admin-login-card">
+    <div class="card-body p-4">
+        <div class="text-center mb-4">
+            <span class="badge text-bg-warning mb-2">ผู้ดูแลระบบ</span>
+            <p class="small fw-semibold mb-1 opacity-75">@AppInfo.CompanyName</p>
+            <h1 class="h4 mb-1">@AppInfo.SystemName</h1>
+            <p class="small mb-0 opacity-75">เข้าสู่ระบบสำหรับผู้ดูแลระบบ (Admin) เท่านั้น</p>
+        </div>
+
+        @if (error is not null)
+        {
+            <div class="alert alert-danger">@error</div>
+        }
+
+        <EditForm Model="Input" method="post" OnSubmit="LoginAsync" FormName="admin-login">
+            <div class="mb-3">
+                <label class="form-label" for="username">ชื่อผู้ใช้ผู้ดูแลระบบ</label>
+                <InputText id="username" class="form-control" @bind-Value="Input!.Username" autocomplete="username" autofocus />
+            </div>
+            <div class="mb-4">
+                <label class="form-label" for="password">รหัสผ่าน</label>
+                <InputText id="password" type="password" class="form-control" @bind-Value="Input!.Password" autocomplete="current-password" />
+            </div>
+            <button type="submit" class="btn btn-warning fw-semibold w-100">เข้าสู่ระบบผู้ดูแล</button>
+        </EditForm>
+
+        <hr class="border-secondary" />
+        <a href="login" class="btn btn-outline-light btn-sm w-100">กลับไปหน้าเข้าสู่ระบบผู้ใช้งาน</a>
+    </div>
+</div>
+
+@code {
+    [CascadingParameter] private HttpContext HttpContext { get; set; } = default!;
+
+    [SupplyParameterFromForm(FormName = "admin-login")] private LoginInput? Input { get; set; }
+
+    [SupplyParameterFromQuery] private string? ReturnUrl { get; set; }
+
+    private string? error;
+
+    protected override void OnInitialized() => Input ??= new();
+
+    private async Task LoginAsync()
+    {
+        var user = await Auth.ValidateAsync(Input!.Username, Input.Password);
+        if (user is null)
+        {
+            error = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง หรือบัญชีถูกปิดใช้งาน";
+            Input.Password = null;
+            return;
+        }
+        if (!user.HasRole(Role.Admin))
+        {
+            error = "บัญชีนี้ไม่ใช่ผู้ดูแลระบบ กรุณาเข้าสู่ระบบที่หน้าผู้ใช้งาน";
+            Input.Password = null;
+            return;
+        }
+
+        await AuthCookie.SignInAsync(HttpContext, user);
+        var target = AuthCookie.IsLocalUrl(ReturnUrl) && ReturnUrl!.StartsWith("/admin", StringComparison.OrdinalIgnoreCase)
+            ? ReturnUrl
+            : "/admin";
+        Nav.NavigateTo(target, forceLoad: true);
+    }
+
+    private sealed class LoginInput
+    {
+        public string? Username { get; set; }
+        public string? Password { get; set; }
+    }
+}

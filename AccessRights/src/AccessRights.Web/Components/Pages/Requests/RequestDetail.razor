@@ -1,0 +1,202 @@
+@page "/requests/{Id:int}"
+@inherits AppPage
+@inject RequestService Requests
+
+<PageTitle>คำขอ @request?.RequestNo | @AppInfo.ShortName</PageTitle>
+
+@if (Submitted && request is not null && Error is null && Success is null)
+{
+    <div class="alert alert-success">ส่งคำขอเรียบร้อย ระบบแจ้งผู้อนุมัติแล้ว</div>
+}
+<Alerts Error="@Error" Success="@Success" />
+
+@if (request is not null && Actor is not null)
+{
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <h1 class="h4 m-0">คำขอ @request.RequestNo <StatusBadge Request="request" /></h1>
+
+        @if (IsMyPending)
+        {
+            <div class="d-flex gap-2">
+                @if (!editing)
+                {
+                    <button class="btn btn-outline-primary btn-sm" @onclick="StartEdit" disabled="@Busy">แก้ไขคำขอ</button>
+                }
+                @if (!confirmCancel)
+                {
+                    <button class="btn btn-outline-danger btn-sm" @onclick="() => confirmCancel = true" disabled="@Busy">ยกเลิกคำขอ</button>
+                }
+                else
+                {
+                    <span class="align-self-center small">ยืนยันยกเลิกคำขอนี้?</span>
+                    <button class="btn btn-danger btn-sm" @onclick="CancelAsync" disabled="@Busy">ยืนยัน</button>
+                    <button class="btn btn-light btn-sm" @onclick="() => confirmCancel = false">ไม่</button>
+                }
+            </div>
+        }
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-7">
+            @if (editing)
+            {
+                <div class="card mb-3 border-primary">
+                    <div class="card-body">
+                        <h2 class="h6 mb-3">แก้ไขคำขอ (แก้ได้เฉพาะตอนสถานะรอพิจารณา)</h2>
+                        <div class="mb-3">
+                            <label class="form-label">ใช้สิทธิได้ถึงวันที่ @(request.Right.MaxDurationDays is null ? "(เว้นว่าง = ไม่มีวันหมดอายุ)" : $"(ไม่เกิน {request.Right.MaxDurationDays} วัน)")</label>
+                            <input type="date" class="form-control" style="max-width: 220px"
+                                   min="@Fmt.InputDate(Today)"
+                                   max="@(request.Right.MaxDurationDays is { } d ? Fmt.InputDate(Today.AddDays(d)) : null)"
+                                   @bind="editEndDate" @bind:format="yyyy-MM-dd" />
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">เหตุผล</label>
+                            <textarea class="form-control" rows="4" maxlength="1000" @bind="editReason"></textarea>
+                        </div>
+                        <button class="btn btn-primary btn-sm" @onclick="SaveEditAsync" disabled="@Busy">บันทึก</button>
+                        <button class="btn btn-light btn-sm" @onclick="() => editing = false">ยกเลิกการแก้ไข</button>
+                    </div>
+                </div>
+            }
+
+            <div class="card mb-3">
+                <div class="card-body">
+                    <dl class="row mb-0">
+                        <dt class="col-sm-4">ผู้ยื่นคำขอ</dt><dd class="col-sm-8">@request.Requester.FullName</dd>
+                        <dt class="col-sm-4">สิทธิที่ขอ</dt><dd class="col-sm-8">@request.Right.Name</dd>
+                        <dt class="col-sm-4">ผู้อนุมัติ</dt><dd class="col-sm-8">@request.Approver.FullName</dd>
+                        <dt class="col-sm-4">ใช้สิทธิได้ถึง</dt><dd class="col-sm-8">@(request.EndDate is null ? "ไม่มีวันหมดอายุ" : Fmt.Day(request.EndDate))</dd>
+                        <dt class="col-sm-4">ยื่นเมื่อ</dt><dd class="col-sm-8">@Fmt.Time(request.CreatedAt)</dd>
+                        <dt class="col-sm-4">เหตุผล</dt><dd class="col-sm-8 pre-line">@request.Reason</dd>
+                        @if (request.DecidedAt is not null)
+                        {
+                            <dt class="col-sm-4">พิจารณาโดย</dt><dd class="col-sm-8">@request.DecidedBy?.FullName (@Fmt.Time(request.DecidedAt))</dd>
+                            <dt class="col-sm-4">ความเห็นผู้พิจารณา</dt><dd class="col-sm-8 pre-line">@(request.DecisionComment ?? "-")</dd>
+                        }
+                    </dl>
+                </div>
+            </div>
+
+            @if (CanReview)
+            {
+                <div class="card mb-3 border-warning">
+                    <div class="card-body">
+                        <h2 class="h6 mb-2">พิจารณาคำขอ</h2>
+                        @if (request.ApproverId != Actor.Id)
+                        {
+                            <p class="small text-muted">คุณกำลังพิจารณาในฐานะ Admin (ผู้อนุมัติประจำสิทธิคือ @request.Approver.FullName)</p>
+                        }
+                        <textarea class="form-control mb-2" rows="3" maxlength="1000" @bind="comment"
+                                  placeholder="ความเห็น (จำเป็นต้องระบุเมื่อปฏิเสธ)"></textarea>
+                        <button class="btn btn-success" @onclick="ApproveAsync" disabled="@Busy">อนุมัติ</button>
+                        <button class="btn btn-outline-danger" @onclick="RejectAsync" disabled="@Busy">ปฏิเสธ</button>
+                    </div>
+                </div>
+            }
+            else if (request.Status == RequestStatus.Pending && request.RequesterId == Actor.Id && (Actor.IsAdmin || Actor.IsApprover))
+            {
+                <p class="small text-muted">คุณไม่สามารถพิจารณาคำขอของตนเองได้ (BR-08)</p>
+            }
+        </div>
+
+        <div class="col-lg-5">
+            <div class="card">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">ประวัติการดำเนินการ</h2>
+                    <ol class="timeline">
+                        @foreach (var h in request.Histories)
+                        {
+                            <li class="@h.Action">
+                                <div><strong>@Fmt.Action(h.Action)</strong> · @h.Actor.FullName</div>
+                                <div class="small text-muted">@Fmt.Time(h.CreatedAt)</div>
+                                @if (!string.IsNullOrWhiteSpace(h.Comment))
+                                {
+                                    <div class="small pre-line mt-1">@h.Comment</div>
+                                }
+                            </li>
+                        }
+                    </ol>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    [SupplyParameterFromQuery(Name = "submitted")] public int? SubmittedFlag { get; set; }
+
+    private AccessRequest? request;
+    private int loadedId;
+    private bool editing;
+    private bool confirmCancel;
+    private DateOnly? editEndDate;
+    private string editReason = "";
+    private string? comment;
+
+    private bool hideSubmitted;
+
+    private bool Submitted => SubmittedFlag == 1 && !hideSubmitted;
+
+    private bool IsMyPending => request is not null && Actor is not null
+                                && request.RequesterId == Actor.Id && request.Status == RequestStatus.Pending;
+
+    private bool CanReview => request is not null && Actor is not null
+                              && request.CanBeReviewedBy(Actor.Id, Actor.IsAdmin, Actor.IsApprover);
+
+    protected override async Task LoadAsync()
+    {
+        request = await Requests.GetDetailAsync(Actor!, Id);
+        loadedId = Id;
+        editing = false;
+        confirmCancel = false;
+    }
+
+    // เปิดคำขออื่นจากหน้าแจ้งเตือนขณะอยู่หน้านี้ → โหลดใหม่
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Actor is not null && loadedId != 0 && loadedId != Id)
+            await RunAsync(LoadAsync);
+    }
+
+    private void StartEdit()
+    {
+        editEndDate = request!.EndDate;
+        editReason = request.Reason;
+        editing = true;
+    }
+
+    private async Task SaveEditAsync()
+    {
+        if (await RunAsync(() => Requests.EditAsync(Actor!, Id, request!.Version, editReason, editEndDate)))
+            await ReloadAsync("บันทึกการแก้ไขแล้ว");
+    }
+
+    private async Task CancelAsync()
+    {
+        if (await RunAsync(() => Requests.CancelAsync(Actor!, Id, request!.Version)))
+            await ReloadAsync("ยกเลิกคำขอแล้ว");
+    }
+
+    private async Task ApproveAsync()
+    {
+        if (await RunAsync(() => Requests.ApproveAsync(Actor!, Id, request!.Version, comment)))
+            await ReloadAsync("อนุมัติคำขอแล้ว ระบบแจ้งผู้ยื่นแล้ว");
+    }
+
+    private async Task RejectAsync()
+    {
+        if (await RunAsync(() => Requests.RejectAsync(Actor!, Id, request!.Version, comment)))
+            await ReloadAsync("ปฏิเสธคำขอแล้ว ระบบแจ้งผู้ยื่นแล้ว");
+    }
+
+    private async Task ReloadAsync(string message)
+    {
+        comment = null;
+        hideSubmitted = true;
+        await RunAsync(LoadAsync);
+        Success = message;
+    }
+}

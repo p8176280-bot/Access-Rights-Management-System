@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <ItemGroup>
+    <ProjectReference Include="..\AccessRights.Infrastructure\AccessRights.Infrastructure.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,67 @@
+@page "/notifications"
+@inherits AppPage
+@inject InboxService Inbox
+@inject NavigationManager Nav
+
+<PageTitle>แจ้งเตือน | @AppInfo.ShortName</PageTitle>
+
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h1 class="h4 m-0">แจ้งเตือน</h1>
+    @if (items.Any(n => !n.IsRead))
+    {
+        <button class="btn btn-outline-secondary btn-sm" @onclick="MarkAllAsync" disabled="@Busy">อ่านทั้งหมดแล้ว</button>
+    }
+</div>
+
+<Alerts Error="@Error" />
+
+@if (Loaded && Error is null)
+{
+    @if (items.Count == 0)
+    {
+        <p class="text-muted">ยังไม่มีการแจ้งเตือน</p>
+    }
+    else
+    {
+        <div class="list-group">
+            @foreach (var n in items)
+            {
+                <button type="button" class="list-group-item list-group-item-action @(n.IsRead ? "" : "unread")"
+                        @onclick="() => OpenAsync(n)">
+                    <div class="d-flex justify-content-between gap-3">
+                        <strong>@n.Title</strong>
+                        <span class="small text-muted text-nowrap">@Fmt.Time(n.CreatedAt)</span>
+                    </div>
+                    <div class="small">@n.Message</div>
+                </button>
+            }
+        </div>
+    }
+}
+
+@code {
+    private List<Notification> items = [];
+
+    protected override async Task LoadAsync() => items = await Inbox.ListAsync(Actor!);
+
+    private async Task OpenAsync(Notification n)
+    {
+        if (!n.IsRead)
+            await Inbox.MarkReadAsync(Actor!, n.Id);
+
+        if (!string.IsNullOrEmpty(n.Link) && n.Link.StartsWith('/'))
+            Nav.NavigateTo(n.Link.TrimStart('/'));
+        else
+            await RunAsync(LoadAsync);
+    }
+
+    private async Task MarkAllAsync()
+    {
+        await RunAsync(async () =>
+        {
+            await Inbox.MarkAllReadAsync(Actor!);
+            await LoadAsync();
+        });
+        Nav.Refresh(); // อัปเดตตัวเลขบนแถบเมนู
+    }
+}

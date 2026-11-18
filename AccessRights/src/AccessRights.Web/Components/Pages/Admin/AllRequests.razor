@@ -1,0 +1,176 @@
+@page "/admin"
+@page "/admin/requests"
+@attribute [Authorize(Roles = "Admin")]
+@layout AdminLayout
+@inherits AppPage
+@inject RequestService Requests
+
+<PageTitle>คำขอทั้งหมด | @AppInfo.ShortName</PageTitle>
+
+<h1 class="h4 mb-1">คำขอทั้งหมด</h1>
+<p class="text-muted small mb-3">
+    Admin อนุมัติหรือปฏิเสธคำขอที่รอพิจารณาได้ทุกรายการ ยกเว้นคำขอของตนเอง (BR-08) · ผลการพิจารณาจะแจ้งผู้ยื่นทันที
+</p>
+
+<Alerts Error="@Error" Success="@Success" />
+
+@if (Loaded && Actor is not null)
+{
+    <div class="d-flex flex-wrap gap-2 mb-3 align-items-center">
+        @foreach (var (key, label) in Tabs)
+        {
+            <button class="btn btn-sm @(filter == key ? "btn-primary" : "btn-outline-primary")"
+                    @onclick="() => filter = key">
+                @label <span class="badge @(filter == key ? "text-bg-light" : "text-bg-primary")">@Count(key)</span>
+            </button>
+        }
+        <input class="form-control form-control-sm ms-auto" style="max-width: 280px"
+               placeholder="ค้นหา: เลขที่ / ชื่อผู้ยื่น / สิทธิ"
+               @bind="search" @bind:event="oninput" />
+    </div>
+
+    @if (Filtered.Count == 0)
+    {
+        <p class="text-muted">ไม่มีรายการ</p>
+    }
+    else
+    {
+        <div class="card">
+            <div class="table-responsive">
+                <table class="table table-hover mb-0 align-middle">
+                    <thead>
+                        <tr>
+                            <th>เลขที่</th><th>ผู้ยื่น</th><th>สิทธิ</th><th>ผู้อนุมัติประจำสิทธิ</th>
+                            <th>ใช้ได้ถึง</th><th>สถานะ</th><th>ยื่นเมื่อ</th><th style="min-width: 220px">การพิจารณา</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var r in Filtered)
+                        {
+                            <tr>
+                                <td><a href="requests/@r.Id">@r.RequestNo</a></td>
+                                <td>@r.Requester.FullName</td>
+                                <td>@r.Right.Name</td>
+                                <td>@r.Approver.FullName</td>
+                                <td>@(r.EndDate is null ? "ไม่กำหนด" : Fmt.Day(r.EndDate))</td>
+                                <td><StatusBadge Request="r" /></td>
+                                <td class="small">@Fmt.Time(r.CreatedAt)</td>
+                                <td>
+                                    @if (r.CanBeReviewedBy(Actor.Id, Actor.IsAdmin, Actor.IsApprover))
+                                    {
+                                        @if (rejectingId == r.Id)
+                                        {
+                                            <div class="d-flex flex-column gap-1">
+                                                <input class="form-control form-control-sm" placeholder="เหตุผลที่ปฏิเสธ (จำเป็น)"
+                                                       maxlength="1000" @bind="rejectReason" @bind:event="oninput" />
+                                                <div class="d-flex gap-1">
+                                                    <button class="btn btn-sm btn-danger" disabled="@(Busy || string.IsNullOrWhiteSpace(rejectReason))"
+                                                            @onclick="() => RejectAsync(r)">ยืนยันปฏิเสธ</button>
+                                                    <button class="btn btn-sm btn-light" @onclick="() => rejectingId = null">ยกเลิก</button>
+                                                </div>
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="d-flex gap-1">
+                                                <button class="btn btn-sm btn-success" disabled="@Busy" @onclick="() => ApproveAsync(r)">อนุมัติ</button>
+                                                <button class="btn btn-sm btn-outline-danger" disabled="@Busy" @onclick="() => StartReject(r)">ปฏิเสธ</button>
+                                            </div>
+                                        }
+                                    }
+                                    else if (r.Status == RequestStatus.Pending && r.RequesterId == Actor.Id)
+                                    {
+                                        <span class="small text-muted">คำขอของคุณ (พิจารณาเองไม่ได้)</span>
+                                    }
+                                    else if (r.DecidedBy is not null)
+                                    {
+                                        <span class="small text-muted">โดย @r.DecidedBy.FullName</span>
+                                        @if (!string.IsNullOrWhiteSpace(r.DecisionComment))
+                                        {
+                                            <div class="small text-muted text-truncate" style="max-width: 220px" title="@r.DecisionComment">"@r.DecisionComment"</div>
+                                        }
+                                    }
+                                    else
+                                    {
+                                        <span class="small text-muted">-</span>
+                                    }
+                                </td>
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+}
+
+@code {
+    private static readonly (string Key, string Label)[] Tabs =
+    [
+        ("pending", "รอพิจารณา"),
+        ("active", "อนุมัติ (ใช้งานอยู่)"),
+        ("expired", "หมดอายุ"),
+        ("rejected", "ปฏิเสธ"),
+        ("cancelled", "ยกเลิก"),
+        ("all", "ทั้งหมด")
+    ];
+
+    private List<AccessRequest> all = [];
+    private string filter = "pending";
+    private string search = "";
+    private int? rejectingId;
+    private string? rejectReason;
+
+    protected override async Task LoadAsync() => all = await Requests.ListAllAsync(Actor!);
+
+    private bool Match(AccessRequest r, string key) => key switch
+    {
+        "pending" => r.Status == RequestStatus.Pending,
+        "active" => r.IsActiveOn(Today),
+        "expired" => r.IsExpiredOn(Today),
+        "rejected" => r.Status == RequestStatus.Rejected,
+        "cancelled" => r.Status == RequestStatus.Cancelled,
+        _ => true
+    };
+
+    private int Count(string key) => all.Count(r => Match(r, key));
+
+    private List<AccessRequest> Filtered => all.Where(r => Match(r, filter) && MatchSearch(r)).ToList();
+
+    private bool MatchSearch(AccessRequest r)
+    {
+        if (string.IsNullOrWhiteSpace(search)) return true;
+        var q = search.Trim();
+        return r.RequestNo.Contains(q, StringComparison.OrdinalIgnoreCase)
+               || r.Requester.FullName.Contains(q, StringComparison.OrdinalIgnoreCase)
+               || r.Right.Name.Contains(q, StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void StartReject(AccessRequest r)
+    {
+        rejectingId = r.Id;
+        rejectReason = null;
+    }
+
+    private async Task ApproveAsync(AccessRequest r)
+    {
+        if (await RunAsync(() => Requests.ApproveAsync(Actor!, r.Id, r.Version, null)))
+            await ReloadAsync($"อนุมัติคำขอ {r.RequestNo} ของ {r.Requester.FullName} แล้ว");
+    }
+
+    private async Task RejectAsync(AccessRequest r)
+    {
+        if (await RunAsync(() => Requests.RejectAsync(Actor!, r.Id, r.Version, rejectReason)))
+        {
+            rejectingId = null;
+            rejectReason = null;
+            await ReloadAsync($"ปฏิเสธคำขอ {r.RequestNo} ของ {r.Requester.FullName} แล้ว");
+        }
+    }
+
+    private async Task ReloadAsync(string message)
+    {
+        await RunAsync(LoadAsync);
+        Success = message;
+    }
+}

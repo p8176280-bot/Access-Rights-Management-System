@@ -1,0 +1,70 @@
+@page "/profile"
+@inherits AppPage
+@inject UserService UserSvc
+
+<PageTitle>ข้อมูลของฉัน | @AppInfo.ShortName</PageTitle>
+
+<h1 class="h4 mb-3">ข้อมูลของฉัน</h1>
+
+<Alerts Error="@Error" />
+
+@if (me is not null)
+{
+    <div class="alert alert-info small">
+        ข้อมูลบัญชีแก้ไขได้โดย<strong>ผู้ดูแลระบบ (Admin)</strong>เท่านั้น
+        หากต้องการเปลี่ยนชื่อ อีเมล รหัสผ่าน หรือบทบาท กรุณาติดต่อผู้ดูแลระบบ
+        @if (Actor?.IsAdmin == true)
+        {
+            <span>· คุณเป็น Admin แก้ไขได้ที่ <a href="admin/users">จัดการผู้ใช้</a></span>
+        }
+    </div>
+
+    <div class="row g-3" style="max-width: 960px">
+        <div class="col-md-5">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">บัญชีผู้ใช้</h2>
+                    <dl class="row mb-0">
+                        <dt class="col-5">ชื่อผู้ใช้</dt><dd class="col-7">@me.Username</dd>
+                        <dt class="col-5">ชื่อ-นามสกุล</dt><dd class="col-7">@me.FullName</dd>
+                        <dt class="col-5">อีเมล</dt><dd class="col-7 text-break">@me.Email</dd>
+                        <dt class="col-5">สถานะ</dt><dd class="col-7">@(me.IsActive ? "ใช้งาน" : "ปิดใช้งาน")</dd>
+                    </dl>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-7">
+            <div class="card h-100">
+                <div class="card-body">
+                    <h2 class="h6 mb-3">บทบาทของฉัน</h2>
+                    <ul class="list-unstyled mb-0">
+                        @foreach (var role in Enum.GetValues<Role>())
+                        {
+                            var has = me.HasRole(role);
+                            <li class="d-flex gap-2 mb-3 @(has ? "" : "text-muted opacity-50")">
+                                <span class="role-mark">@(has ? "✓" : "–")</span>
+                                <div>
+                                    <span class="badge @(has ? RoleCss(role) : "text-bg-light border")">@Fmt.RoleName(role)</span>
+                                    <div class="small mt-1">@Fmt.RoleDescription(role)</div>
+                                </div>
+                            </li>
+                        }
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+@code {
+    private User? me;
+
+    protected override async Task LoadAsync() => me = await UserSvc.GetSelfAsync(Actor!);
+
+    public static string RoleCss(Role r) => r switch
+    {
+        Role.Admin => "text-bg-warning",
+        Role.Approver => "text-bg-info",
+        _ => "text-bg-secondary"
+    };
+}
