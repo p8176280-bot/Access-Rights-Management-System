@@ -9,9 +9,12 @@
     @* ---------- แถบเมนูโหมดผู้ดูแลระบบ (แยกจากผู้ใช้ทั่วไป) ---------- *@
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-4">
         <div class="container flex-wrap gap-2">
-            <a class="navbar-brand fw-semibold lh-sm" href="admin">
-                <span class="d-block small opacity-75">@AppInfo.CompanyName · ผู้ดูแลระบบ</span>
-                @AppInfo.SystemName
+            <a class="navbar-brand fw-semibold lh-sm d-flex align-items-center gap-2" href="admin">
+                <img src="logo.svg" alt="" width="40" height="40" />
+                <span>
+                    <span class="d-block small opacity-75">@AppInfo.CompanyName · ผู้ดูแลระบบ</span>
+                    @AppInfo.SystemName
+                </span>
             </a>
             <AuthorizeView Roles="Admin">
                 <Authorized>
@@ -21,10 +24,6 @@
                         <li class="nav-item"><NavLink class="nav-link" href="admin/rights">จัดการรายการสิทธิ</NavLink></li>
                     </ul>
                     <div class="d-flex flex-wrap align-items-center gap-2">
-                        @if (context.User.IsInRole("Requester") || context.User.IsInRole("Approver"))
-                        {
-                            <a class="btn btn-sm btn-outline-light" href="">ไปหน้าผู้ใช้งาน</a>
-                        }
                         <span class="text-white-50 small text-nowrap">
                             @context.User.FindFirst(CurrentUser.FullNameClaim)?.Value
                             <span class="badge text-bg-warning ms-1">Admin</span>
@@ -43,9 +42,12 @@ else
 {
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary mb-4">
         <div class="container flex-wrap gap-2">
-            <a class="navbar-brand fw-semibold lh-sm" href="">
-                <span class="d-block small opacity-75">@AppInfo.CompanyName</span>
-                @AppInfo.SystemName
+            <a class="navbar-brand fw-semibold lh-sm d-flex align-items-center gap-2" href="">
+                <img src="logo.svg" alt="" width="40" height="40" />
+                <span>
+                    <span class="d-block small opacity-75">@AppInfo.CompanyName</span>
+                    @AppInfo.SystemName
+                </span>
             </a>
 
             <AuthorizeView>
